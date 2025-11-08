@@ -70,6 +70,8 @@ pymorphy3==2.0.3
 pymorphy3-dicts-ru==2.4.417150.4580142
 pyparsing==3.2.0
 PyQt6==6.10.0
+PyQt6-Charts==6.10.0
+PyQt6-Charts-Qt6==6.10.0
 PyQt6-Qt6==6.10.0
 PyQt6_sip==13.10.2
 python-dateutil==2.9.0.post0
