@@ -1,10 +1,10 @@
 import sqlite3
-import os
 from datetime import datetime
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, \
-    QTableWidget, QTableWidgetItem, QMessageBox, QDialog, QLineEdit, QLabel, \
-    QHeaderView, QComboBox
-from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QTableWidget, QTableWidgetItem, QMessageBox, QDialog,
+    QLineEdit, QLabel, QHeaderView, QComboBox
+)
 from PyQt6.QtCore import Qt, QTimer
 
 
@@ -12,8 +12,10 @@ class SecondWindow(QWidget):
     def __init__(self, db_path='tasks.db', tray=None):
         super().__init__()
         self.db_path = db_path
-        self.tray = tray  # получаем ссылку на иконку трея для уведомлений
+        self.tray = tray
         self.conn = None
+        self.current_filter = "Все"
+
         self.init_db()
         self.initUI()
         self.load_tasks()
@@ -37,15 +39,23 @@ class SecondWindow(QWidget):
 
     def initUI(self):
         self.setWindowTitle("Все задачи")
+
+        # --- Добавляем выпадающий фильтр по статусу ---
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItems([
+            "Все", "Не начата", "В работе", "Выполнена", "Просрочена", "Отменена"
+        ])
+        self.filter_combo.currentTextChanged.connect(self.on_filter_changed)
+
         self.table = QTableWidget()
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(['Заголовок', 'Задача', 'До', 'Оповещение', 'Статус'])
         header = self.table.horizontalHeader()
         for i in range(5):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch)
-
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
+        # --- Кнопки управления ---
         btn_edit = QPushButton("Редактировать")
         btn_delete = QPushButton("Удалить")
         btn_refresh = QPushButton("Обновить")
@@ -55,10 +65,12 @@ class SecondWindow(QWidget):
         btn_refresh.clicked.connect(self.load_tasks)
 
         btn_layout = QHBoxLayout()
+        btn_layout.addWidget(QLabel("Фильтр по статусу:"))
+        btn_layout.addWidget(self.filter_combo)
+        btn_layout.addStretch()
         btn_layout.addWidget(btn_edit)
         btn_layout.addWidget(btn_delete)
         btn_layout.addWidget(btn_refresh)
-        btn_layout.addStretch()
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.table)
@@ -73,18 +85,30 @@ class SecondWindow(QWidget):
             background: #140303; color: white;
             padding: 6px; border: 1px solid #cfd8e3; border-radius: 4px;
         }
+        QComboBox {
+            background: #140303; color: white;
+            border: 1px solid #cfd8e3; border-radius: 4px;
+            padding: 4px;
+        }
         QPushButton {
             background: #3c0a0a; color: white; border-radius: 6px; padding: 6px 12px;
         }
         QPushButton:hover { background: #601010; }
         """)
 
-        self.setMinimumSize(700, 420)
+        self.setMinimumSize(720, 420)
 
+    # --- Загружаем задачи (с учётом фильтра) ---
     def load_tasks(self):
         self.table.setRowCount(0)
         cur = self.conn.cursor()
-        cur.execute("""SELECT id, title, task, until, alert, status FROM tasks ORDER BY id""")
+
+        if self.current_filter == "Все":
+            cur.execute("""SELECT id, title, task, until, alert, status FROM tasks ORDER BY id""")
+        else:
+            cur.execute("""SELECT id, title, task, until, alert, status FROM tasks WHERE status=? ORDER BY id""",
+                        (self.current_filter,))
+
         for row_data in cur.fetchall():
             _id, title, task, until, alert, status = row_data
             row = self.table.rowCount()
@@ -96,6 +120,10 @@ class SecondWindow(QWidget):
             self.table.setItem(row, 2, QTableWidgetItem(until or ''))
             self.table.setItem(row, 3, QTableWidgetItem(alert or ''))
             self.table.setItem(row, 4, QTableWidgetItem(status or 'В работе'))
+
+    def on_filter_changed(self, new_value):
+        self.current_filter = new_value
+        self.load_tasks()
 
     def add_row(self, title, task, date1, date2, status):
         cur = self.conn.cursor()
@@ -140,6 +168,15 @@ class SecondWindow(QWidget):
             self.conn.commit()
             self.load_tasks()
 
+    def is_valid_date(self, date_str):
+        if not date_str:
+            return True
+        try:
+            datetime.strptime(date_str, "%Y-%m-%d")
+            return True
+        except ValueError:
+            return False
+
     def edit_selected(self):
         row = self.table.currentRow()
         if row < 0:
@@ -156,7 +193,7 @@ class SecondWindow(QWidget):
         le3 = QLineEdit(self.table.item(row, 2).text())
         le4 = QLineEdit(self.table.item(row, 3).text())
         le5 = QComboBox()
-        statuses = ['Не начата', 'В работе', 'Выполнена', 'Отменена']
+        statuses = ['Не начата', 'В работе', 'Выполнена', 'Просрочена', 'Отменена']
         le5.addItems(statuses)
         try:
             le5.setCurrentIndex(statuses.index(self.table.item(row, 4).text()))
@@ -177,7 +214,18 @@ class SecondWindow(QWidget):
         buttons = QHBoxLayout()
         save = QPushButton("Сохранить")
         cancel = QPushButton("Отмена")
-        save.clicked.connect(dlg.accept)
+
+        # Вместо прямого dlg.accept — делаем валидацию перед закрытием
+        def try_save():
+            new_until = le3.text().strip()
+            new_alert = le4.text().strip()
+            if not self.is_valid_date(new_until) or not self.is_valid_date(new_alert):
+                QMessageBox.warning(dlg, "Ошибка формата даты", "Формат даты должен быть: YYYY-MM-DD")
+                return
+            # all good
+            dlg.accept()
+
+        save.clicked.connect(try_save)
         cancel.clicked.connect(dlg.reject)
         buttons.addWidget(save)
         buttons.addWidget(cancel)

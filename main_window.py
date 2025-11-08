@@ -36,7 +36,7 @@ class MainWindow(QWidget):
         self.until = QLineEdit()
         self.until.setPlaceholderText("Дата дедлайна (например: 2025-11-10)")
         self.alert = QLineEdit()
-        self.alert.setPlaceholderText("Дата оповещения (например: 2025-11-09)")
+        self.alert.setPlaceholderText("Дата и время оповещения (например: 2025-11-09)")
         self.status = 'В работе'
 
         gb_layout.addRow(QLabel("Заголовок"), self.title)
@@ -150,6 +150,7 @@ class MainWindow(QWidget):
     def closeEvent(self, event):
         event.ignore()
         self.hide()
+        self.w.hide()
 
     def full_exit(self):
         if self.w:
@@ -163,4 +164,3 @@ if __name__ == "__main__":
     w = MainWindow()
     w.show()
     sys.exit(app.exec())
-
